@@ -69,7 +69,7 @@ resource "aws_subnet" "net-gitlab-public" {
   map_public_ip_on_launch = true
   availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
   tags {
-    Name = "net-public-0${count.index}"
+    Name = "gitlab-net-public-0${count.index}"
     User = "skysec"
   }
 }
@@ -82,7 +82,7 @@ resource "aws_subnet" "net-gitlab-private" {
   map_public_ip_on_launch = false
   availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
   tags {
-    Name = "net-private-0${count.index}"
+    Name = "gitlab-net-private-0${count.index}"
     User = "skysec"
   }
 }
@@ -98,4 +98,187 @@ resource "aws_route_table_association" "rt_private_subnet" {
   count = "${var.net_public_count}"
   subnet_id = "${element(aws_subnet.net-gitlab-private.*.id,count.index)}"
   route_table_id = "${aws_default_route_table.rt-gitlab-private.id}"
+}
+
+# Create an RDS subnet group
+
+resource "aws_db_subnet_group" "db_net_group" {
+  name = "db-net-group"
+  subnet_ids = ["${aws_subnet.net-gitlab-private.*.id}"]
+
+  tags {
+    Name = "gitlab_db_net_group"
+    User = "skysec"
+  }
+}
+
+# Create Elasticache Subnet group
+
+resource "aws_elasticache_subnet_group" "redis_net_group" {
+  name = "redis-net-group"
+  subnet_ids = ["${aws_subnet.net-gitlab-private.*.id}"]
+
+}
+
+# Security groups
+
+resource "aws_security_group" "sg_gitlab_public" {
+  name = "sg_gitlab_public"
+  description = "SSH, HTTP and HTTPS Access for ELB and Seed"
+  vpc_id = "${aws_vpc.vpc-gitlab.id}"
+  # Secure shell
+  ingress {
+    from_port 	= 22
+    to_port 	= 22
+    protocol 	= "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  # HTTP
+  ingress {
+    from_port 	= 80
+    to_port 	= 80
+    protocol 	= "tcp"
+    cidr_blocks	= ["0.0.0.0/0"]
+  }
+  # HTTPS
+  ingress {
+    from_port 	= 443
+    to_port 	= 443
+    protocol 	= "tcp"
+    cidr_blocks	= ["0.0.0.0/0"]
+  }
+  #Internet Access
+  egress {
+    from_port	= 0
+    to_port 	= 0
+    protocol	= "-1"
+    cidr_blocks	= ["0.0.0.0/0"]
+  }
+
+  tags {
+    Name = "gitlab-sg-public"
+    User = "skysec"
+  }
+}
+
+resource "aws_security_group" "sg_gitlab_private" {
+  name        = "sg_gitlab_private"
+  description = "Internal Instances"
+  vpc_id      = "${aws_vpc.vpc-gitlab.id}"
+  # SSH: Internal only
+  ingress {
+    from_port 	= 22
+    to_port 	= 22
+    protocol 	= "tcp"
+    cidr_blocks = ["${var.vpc_cidr}"]
+  }
+  # HTTP
+  ingress {
+    from_port 	= 80
+    to_port 	= 80
+    protocol 	= "tcp"
+    cidr_blocks	= ["${var.vpc_cidr}"]
+  }
+  # HTTPS
+  ingress {
+    from_port 	= 443
+    to_port 	= 443
+    protocol 	= "tcp"
+    cidr_blocks	= ["${var.vpc_cidr}"]
+  }
+  #Internet Access
+  egress {
+    from_port	= 0
+    to_port 	= 0
+    protocol	= "-1"
+    cidr_blocks	= ["0.0.0.0/0"]
+  }
+
+  tags {
+    Name = "gitlab-sg-private"
+    User = "skysec"
+  }
+}
+
+resource "aws_security_group" "sg_gitlab_postgresql" {
+  name= "sg_gitlab_postgresql"
+  description = "PostgreSQL Security Group"
+  vpc_id      = "${aws_vpc.vpc-gitlab.id}"
+  # PostgreSQL access to internal instances and seed
+  ingress {
+    from_port        = 5432
+    to_port          = 5432
+    protocol         = "tcp"
+    security_groups  = ["${aws_security_group.sg_gitlab_public.id}", "${aws_security_group.sg_gitlab_private.id}"]
+  }
+
+  tags {
+    Name = "sg_gitlab_postgresql"
+    User = "skysec"
+  }
+}
+
+resource "aws_security_group" "sg_gitlab_redis" {
+  name= "sg_gitlab_redis"
+  description = "Redis Security Group"
+  vpc_id      = "${aws_vpc.vpc-gitlab.id}"
+  # PostgreSQL access to internal instances and seed
+  ingress {
+    from_port        = 6379
+    to_port          = 6379
+    protocol         = "tcp"
+    security_groups  = ["${aws_security_group.sg_gitlab_public.id}", "${aws_security_group.sg_gitlab_private.id}"]
+  }
+
+  tags {
+    Name = "sg_gitlab_redis"
+    User = "skysec"
+  }
+}
+
+# EFS
+resource "aws_efs_file_system" "gitlab_efs" {
+  creation_token = "gitlab_efs_001"
+
+  tags {
+    Name = "gitlab_efs"
+    User = "skysec"
+  }
+}
+
+resource "aws_efs_mount_target" "gitlab_efs_mt" {
+  count = "${var.efs_mt_count}"
+  file_system_id = "${aws_efs_file_system.gitlab_efs.id}"
+  subnet_id      = "${element(aws_subnet.net-gitlab-private.*.id,count.index)}"
+  security_groups = ["${aws_security_group.sg_gitlab_public.id}", "${aws_security_group.sg_gitlab_private.id}"]
+}
+
+# RDS - PostgreSQL
+resource "aws_db_instance" "gitlab-postgres" {
+  allocated_storage	= 10
+  engine		= "postgres"
+  engine_version	= "9.5.4"
+  instance_class	= "${var.postgres_instance}"
+  name			= "${var.postgres_gitlab_dbname}"
+  username		= "${var.postgres_gitlab_user}"
+  password		= "${var.postgres_gitlab_pass}"
+  db_subnet_group_name  = "${aws_db_subnet_group.db_net_group.name}"
+  vpc_security_group_ids = ["${aws_security_group.sg_gitlab_postgresql.id}"]
+  skip_final_snapshot = true
+  tags {
+    Name = "gitlab-postgres"
+    User = "skysec"
+  }
+}
+
+# Elasticache redis
+resource "aws_elasticache_cluster" "gitlab-redis" {
+  cluster_id           = "gitlab-redis-001"
+  engine               = "redis"
+  node_type            = "${var.elasticache_type}"
+  port                 = 6379
+  num_cache_nodes      = 1
+  parameter_group_name = "${var.elasticache_parameter_group}"
+  subnet_group_name    = "${aws_elasticache_subnet_group.redis_net_group.name}"
+  security_group_ids   = ["${aws_security_group.sg_gitlab_redis.id}"]
 }

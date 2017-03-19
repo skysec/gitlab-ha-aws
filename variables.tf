@@ -16,3 +16,10 @@ variable "net_private" {
     "1" = "172.18.2.0/24"
   }
 }
+variable "efs_mt_count" {}
+variable "postgres_instance" {}
+variable "postgres_gitlab_dbname" {}
+variable "postgres_gitlab_user" {}
+variable "postgres_gitlab_pass" {}
+variable "elasticache_type" {}
+variable "elasticache_parameter_group" {}
