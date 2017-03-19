@@ -1,0 +1,21 @@
+---
+# defaults file for gitlab-common
+system_fqdn: "gitlab.example.com"
+gitlab_omnibus: "https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh"
+gitlab_user: "git"
+gitlab_datadir: "/gitlab-data"
+#gitlab_root_pass: "verystringpassword"
+gitlab_root_email: "root@example.com"
+postgres_gitlab_user: "git"
+#postgres_gitlab_pass: "verystrongpassword"
+postgres_gitlab_attr: "CREATEDB"
+postgres_gitlab_ext: "pg_trgm"
+postgres_gitlab_dbname: "gitlabhq_production"
+postgress_default_db: "template1"
+#postgres_host: "tf-00eca46e026d81647d7590b309.cnai7r1trurg.us-east-1.rds.amazonaws.com"
+postgres_user: "{{ postgres_gitlab_user }}"
+postgres_pass: "{{ postgres_gitlab_pass }}"
+unicorn_workers: "3"
+#redis_host: "localhost"
+redis_port: "6379"
+#efs_dnsname

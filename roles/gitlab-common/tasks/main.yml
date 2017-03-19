@@ -1,0 +1,107 @@
+---
+# tasks file for gitlab-common
+- name: Install precondition for Ubuntu 16.04
+  raw: test -e /usr/bin/python || (apt-get update && apt-get install  python -y) 
+
+- name: Install git
+  apt:
+    name: git-core
+    state: present
+
+- name: Set postfix Internet Site options
+  debconf:
+    name: postfix
+    question: "postfix/main_mailer_type" 
+    value: "'Internet Site'" 
+    vtype: "string"
+
+- name: Set postfix option hostname
+  debconf: 
+    name: postfix
+    question: "postfix/mailname"
+    value: "{{ system_fqdn }}"
+    vtype: "string"
+
+- name: Install Postfix
+  apt:
+   name: postfix
+   state: present
+   update_cache: yes
+
+- name: Install dependencies
+  apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - openssh-server
+    - curl
+    - ca-certificates
+    - nfs-common
+
+- name: Install python-psycopg2
+  apt:
+    name: python-psycopg2
+    state: present
+
+- name: Create extension
+  postgresql_ext:
+    name: "{{ postgres_gitlab_ext }}"
+    db: "{{ postgress_default_db }}"
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_pass }}"  
+
+- name: Create NFS mount point
+  file:
+    path: "{{ gitlab_datadir }}"
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+
+- name: Create NFS Option
+  mount:
+    name: "{{ gitlab_datadir }}"
+    src: "{{ efs_dnsname }}:/"
+    fstype: nfs
+    opts: "defaults,vers=4.1"
+    state: mounted
+
+#- name: Create NFS option
+#  lineinfile:
+#    dest: /etc/fstab
+#    regexp: 'gitlab-data\s+nfs'
+#    line: "{{ efs_dnsname }}:/ /{{ gitlab_datadir }} nfs defaults,vers=4.1 0 0"
+
+
+- name: Copy install script 
+  copy:
+    src: script.deb.sh
+    dest: /usr/local/bin/script.deb.sh 
+    owner: root
+    group: root
+    mode: 0750
+
+- name: Install repository
+  command: /usr/local/bin/script.deb.sh
+  args:
+    creates: /etc/apt/sources.list.d/gitlab_gitlab-ce.list
+
+- name: Install gitlab-ce
+  apt: 
+    name: gitlab-ce
+    state: present
+
+- name: Copy configuration file
+  template:
+    src: gitlab.rb.j2
+    dest: /etc/gitlab/gitlab.rb
+    owner: root
+    group: root
+    mode: 0600
+
+- name: Configure gitlab-ce
+  command: gitlab-ctl reconfigure
+  args:
+    creates: /etc/systemd/system/basic.target.wants/gitlab-runsvdir.service
+
+ 

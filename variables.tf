@@ -23,3 +23,11 @@ variable "postgres_gitlab_user" {}
 variable "postgres_gitlab_pass" {}
 variable "elasticache_type" {}
 variable "elasticache_parameter_group" {}
+variable "ssh_key_name" {}
+variable "ssh_key_path" {}
+variable "ssh_key_private_path" {}
+variable "seed_instance_type" {}
+variable "seed_ami" {}
+variable "ssl_certificate_name" {}
+variable "ssl_certificate_public" {}
+variable "ssl_certificate_private" {}

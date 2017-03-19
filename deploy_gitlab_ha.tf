@@ -20,6 +20,8 @@ data "aws_availability_zones" "available" {}
 
 resource "aws_vpc" "vpc-gitlab" {
   cidr_block = "${var.vpc_cidr}"
+  enable_dns_support = true
+  enable_dns_hostnames = true
   tags {
     Name = "gitlab-vpc"
     User = "skysec"
@@ -167,24 +169,10 @@ resource "aws_security_group" "sg_gitlab_private" {
   vpc_id      = "${aws_vpc.vpc-gitlab.id}"
   # SSH: Internal only
   ingress {
-    from_port 	= 22
-    to_port 	= 22
-    protocol 	= "tcp"
+    from_port 	= 0
+    to_port 	= 0
+    protocol 	= "-1"
     cidr_blocks = ["${var.vpc_cidr}"]
-  }
-  # HTTP
-  ingress {
-    from_port 	= 80
-    to_port 	= 80
-    protocol 	= "tcp"
-    cidr_blocks	= ["${var.vpc_cidr}"]
-  }
-  # HTTPS
-  ingress {
-    from_port 	= 443
-    to_port 	= 443
-    protocol 	= "tcp"
-    cidr_blocks	= ["${var.vpc_cidr}"]
   }
   #Internet Access
   egress {
@@ -281,4 +269,65 @@ resource "aws_elasticache_cluster" "gitlab-redis" {
   parameter_group_name = "${var.elasticache_parameter_group}"
   subnet_group_name    = "${aws_elasticache_subnet_group.redis_net_group.name}"
   security_group_ids   = ["${aws_security_group.sg_gitlab_redis.id}"]
+  tags {
+    Name = "gitlab-redis"
+    User = "skysec"
+  }
+}
+
+# SSH key pair
+resource "aws_key_pair" "gitlab-keypair" {
+  key_name  ="${var.ssh_key_name}"
+  public_key = "${file(var.ssh_key_path)}"
+}
+
+# Create the EC2 seed instance
+# This instance will be used as a source for an ami
+# to be deployed with autoscaling
+resource "aws_instance" "gitlab-seed" {
+  instance_type = "${var.seed_instance_type}"
+  ami = "${var.seed_ami}"
+  key_name = "${aws_key_pair.gitlab-keypair.id}"
+  vpc_security_group_ids = ["${aws_security_group.sg_gitlab_public.id}"]
+  subnet_id = "${aws_subnet.net-gitlab-public.0.id}"
+  tags {
+    Name = "gitlab-seed"
+    User = "skysec"
+  }
+
+  provisioner "local-exec" {
+    command = <<SCRIPT
+cat <<EOF > work/vars
+[public ip]
+${aws_instance.gitlab-seed.public_ip}
+[rds_endpoint]
+${aws_db_instance.gitlab-postgres.endpoint}
+[redis_endpoint]
+${aws_elasticache_cluster.gitlab-redis.cache_nodes.0.address}
+[efs_mountpoint]
+${aws_efs_file_system.gitlab_efs.id}.efs.${var.aws_region}.amazonaws.com
+[availability_zone]
+${aws_instance.gitlab-seed.availability_zone}
+EOF
+SCRIPT
+  }
+  provisioner "local-exec" {
+    command = <<SCRIPT
+INSTANCE_IP=${aws_instance.gitlab-seed.public_ip} \
+RDS_ENDPOINT=${aws_db_instance.gitlab-postgres.endpoint} \
+RDS_PASS=${var.postgres_gitlab_pass} \
+REDIS_ENDPOINT=${aws_elasticache_cluster.gitlab-redis.cache_nodes.0.address} \
+KEYPAIR=${var.ssh_key_path} \
+EFS="${aws_efs_file_system.gitlab_efs.id}.efs.${var.aws_region}.amazonaws.com" \
+./configure_instances.sh
+SCRIPT
+  }
+}
+
+#Upload gitlab SSL Certificate
+
+resource "aws_iam_server_certificate" "gitlab-ssl-cert" {
+  name             = "${var.ssl_certificate_name}"
+  certificate_body = "${file(var.ssl_certificate_public)}"
+  private_key      = "${file(var.ssl_certificate_private)}"
 }
