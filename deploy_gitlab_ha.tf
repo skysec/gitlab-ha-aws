@@ -317,7 +317,7 @@ INSTANCE_IP=${aws_instance.gitlab-seed.public_ip} \
 RDS_ENDPOINT=${aws_db_instance.gitlab-postgres.endpoint} \
 RDS_PASS=${var.postgres_gitlab_pass} \
 REDIS_ENDPOINT=${aws_elasticache_cluster.gitlab-redis.cache_nodes.0.address} \
-KEYPAIR=${var.ssh_key_path} \
+KEYPAIR=${var.ssh_key_private_path} \
 EFS="${aws_efs_file_system.gitlab_efs.id}.efs.${var.aws_region}.amazonaws.com" \
 ./configure_instances.sh
 SCRIPT
@@ -325,9 +325,87 @@ SCRIPT
 }
 
 #Upload gitlab SSL Certificate
-
 resource "aws_iam_server_certificate" "gitlab-ssl-cert" {
   name             = "${var.ssl_certificate_name}"
   certificate_body = "${file(var.ssl_certificate_public)}"
   private_key      = "${file(var.ssl_certificate_private)}"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Lets work on the ELB.. shall we?
+resource "aws_elb" "gitlab-elb" {
+  name = "gitlab-elb"
+  subnets = ["${aws_subnet.net-gitlab-public.*.id}"]
+  security_groups = ["${aws_security_group.sg_gitlab_public.id}"]
+  cross_zone_load_balancing = true
+  idle_timeout = 400
+  connection_draining = true
+  connection_draining_timeout = 400
+
+  listener {
+    instance_port = 80
+    instance_protocol = "http"
+    lb_port = 443
+    lb_protocol = "https"
+    ssl_certificate_id = "${aws_iam_server_certificate.gitlab-ssl-cert.arn}"
+  }
+
+  health_check {
+    healthy_threshold = "${var.elb_healthy}"
+    unhealthy_threshold = "${var.elb_unhealthy}"
+    timeout = "${var.elb_timeout}"
+    interval = "${var.elb_interval}"
+    target = "TCP:80"
+  }
+
+  tags {
+    Name = "gitlab-elb"
+    User = "skysec"
+  }
+}
+
+# Create AMI for autoscaling
+resource "aws_ami_from_instance" "gitlab-ami" {
+    name = "ami-${var.ami_id}"
+    source_instance_id = "${aws_instance.gitlab-seed.id}"
+}
+
+# Launch configuration
+resource "aws_launch_configuration" "gitlab_lc" {
+  name_prefix = "gitlab-lc-"
+  image_id = "${aws_ami_from_instance.gitlab-ami.id}"
+  instance_type = "${var.gitlab_instance_type}"
+  security_groups = ["${aws_security_group.sg_gitlab_private.id}"]
+  key_name = "${aws_key_pair.gitlab-keypair.id}"
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Autoscaling Group configuration
+resource "aws_autoscaling_group" "gitlab_autoscaling" {
+  availability_zones = ["${data.aws_availability_zones.available.names[0]}", "${data.aws_availability_zones.available.names[1]}"]
+  name = "gitlab-autoscaling-${aws_launch_configuration.gitlab_lc.id}"
+  max_size = "${var.gitlab_instances_max}"
+  min_size = "${var.gitlab_instances_min}"
+  health_check_grace_period = "${var.autoscaling_check_grace}"
+  health_check_type = "${var.autoscaling_check_type}"
+  desired_capacity = "${var.autoscaling_capacity}"
+  force_delete = true
+  load_balancers = ["${aws_elb.gitlab-elb.id}"]
+  vpc_zone_identifier = ["${aws_subnet.net-gitlab-private.*.id}"]
+  launch_configuration = "${aws_launch_configuration.gitlab_lc.name}"
+
+  tag {
+    key = "Name"
+    value = "gitlan_autoscale_instance"
+    propagate_at_launch = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }

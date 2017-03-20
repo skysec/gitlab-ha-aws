@@ -28,6 +28,17 @@ variable "ssh_key_path" {}
 variable "ssh_key_private_path" {}
 variable "seed_instance_type" {}
 variable "seed_ami" {}
+variable "gitlab_instance_type" {}
 variable "ssl_certificate_name" {}
 variable "ssl_certificate_public" {}
 variable "ssl_certificate_private" {}
+variable "elb_healthy" {}
+variable "elb_unhealthy" {}
+variable "elb_timeout" {}
+variable "elb_interval" {}
+variable "ami_id" {}
+variable "gitlab_instances_max" {}
+variable "gitlab_instances_min" {}
+variable "autoscaling_check_grace" {}
+variable "autoscaling_check_type" {}
+variable "autoscaling_capacity" {}
