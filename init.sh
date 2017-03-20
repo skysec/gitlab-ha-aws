@@ -50,13 +50,11 @@ fi
 export TF_VAR_postgres_gitlab_pass=$(openssl rand -base64 20 | sed 's/\///g')
 
 # Create self-signed certificate
-openssl req -x509 -newkey rsa:2048 -keyout "${WORKDIR}/key.pem" \ 
- -out "${WORKDIR}/cert.pem" -days 90 \
- -subj "/C=CA/ST=ON/O=Secret/CN=gitlab.example.com"
+openssl req -x509 -newkey rsa:2048 -keyout "${WORKDIR}/key.pem" -out "${WORKDIR}/cert.pem" -days 90 -nodes -subj "/C=CA/ST=ON/O=Secret/CN=gitlab.example.com" 
 
 # Certificate Vars
 export TF_VAR_ssl_certificate_public="${WORKDIR}/cert.pem"
-export TF_VAR_ssl_certificate_private="${WORKDIR}/private.pem"
+export TF_VAR_ssl_certificate_private="${WORKDIR}/key.pem"
 
 # terraform plan
 terraform plan
