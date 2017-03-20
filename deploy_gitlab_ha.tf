@@ -59,7 +59,7 @@ resource "aws_route_table" "rt-gitlab-public" {
 }
 
 # Create subnets:
-# Two Public and Two private subnet, each pair public/private
+# Two Public and Two private subnets, each pair public/private
 # on a specific AZ, in order to match the ELB with public subnets
 # and EC2 instances with private subnets
 # First Public subnets...
@@ -102,7 +102,7 @@ resource "aws_route_table_association" "rt_private_subnet" {
   route_table_id = "${aws_default_route_table.rt-gitlab-private.id}"
 }
 
-# Create an RDS subnet group
+# Create a RDS subnet group
 
 resource "aws_db_subnet_group" "db_net_group" {
   name = "db-net-group"
@@ -224,7 +224,7 @@ resource "aws_security_group" "sg_gitlab_redis" {
   }
 }
 
-# EFS
+# EFS: Will provide a NFS(file sharing) service to store common files and repo
 resource "aws_efs_file_system" "gitlab_efs" {
   creation_token = "gitlab_efs_001"
 
@@ -241,7 +241,7 @@ resource "aws_efs_mount_target" "gitlab_efs_mt" {
   security_groups = ["${aws_security_group.sg_gitlab_public.id}", "${aws_security_group.sg_gitlab_private.id}"]
 }
 
-# RDS - PostgreSQL
+# RDS - PostgreSQL: Main DB used by GitLab
 resource "aws_db_instance" "gitlab-postgres" {
   allocated_storage	= 10
   engine		= "postgres"
@@ -259,7 +259,7 @@ resource "aws_db_instance" "gitlab-postgres" {
   }
 }
 
-# Elasticache redis
+# Elasticache redis: Redis is used by Gitlab to store Jobs
 resource "aws_elasticache_cluster" "gitlab-redis" {
   cluster_id           = "gitlab-redis-001"
   engine               = "redis"
@@ -275,7 +275,7 @@ resource "aws_elasticache_cluster" "gitlab-redis" {
   }
 }
 
-# SSH key pair
+# SSH key pair: this public key is install in each instance in order to be accessed remotely
 resource "aws_key_pair" "gitlab-keypair" {
   key_name  ="${var.ssh_key_name}"
   public_key = "${file(var.ssh_key_path)}"
@@ -284,6 +284,9 @@ resource "aws_key_pair" "gitlab-keypair" {
 # Create the EC2 seed instance
 # This instance will be used as a source for an ami
 # to be deployed with autoscaling
+# Diferent services endpoint are passed as variables to be
+# used by the configuration script (a wrapper for ansible)
+# in order to configure gitlab
 resource "aws_instance" "gitlab-seed" {
   instance_type = "${var.seed_instance_type}"
   ami = "${var.seed_ami}"
@@ -308,7 +311,7 @@ SCRIPT
   }
 }
 
-#Upload gitlab SSL Certificate
+#Upload gitlab SSL Certificate. This is the self signed certificate
 resource "aws_iam_server_certificate" "gitlab-ssl-cert" {
   name             = "${var.ssl_certificate_name}"
   certificate_body = "${file(var.ssl_certificate_public)}"
@@ -330,19 +333,20 @@ resource "aws_elb" "gitlab-elb" {
   connection_draining_timeout = 400
 
   listener {
-    instance_port = 80
-    instance_protocol = "http"
+    instance_port = 443
+    instance_protocol = "https"
     lb_port = 443
     lb_protocol = "https"
+    # This is the SSL certificate uploaded in a previous step
     ssl_certificate_id = "${aws_iam_server_certificate.gitlab-ssl-cert.arn}"
   }
-
+  #Health_checks must be improved, right now is only testing the TCP port
   health_check {
     healthy_threshold = "${var.elb_healthy}"
     unhealthy_threshold = "${var.elb_unhealthy}"
     timeout = "${var.elb_timeout}"
     interval = "${var.elb_interval}"
-    target = "TCP:80"
+    target = "TCP:443"
   }
 
   tags {
@@ -351,13 +355,14 @@ resource "aws_elb" "gitlab-elb" {
   }
 }
 
-# Create AMI for autoscaling
+# Create AMI for autoscaling. This image is created based on
+# the seed previously configured
 resource "aws_ami_from_instance" "gitlab-ami" {
     name = "ami-${var.ami_id}"
     source_instance_id = "${aws_instance.gitlab-seed.id}"
 }
 
-# Launch configuration
+# Launch configuration. The AMI created is used by LC
 resource "aws_launch_configuration" "gitlab_lc" {
   name_prefix = "gitlab-lc-"
   image_id = "${aws_ami_from_instance.gitlab-ami.id}"
@@ -369,7 +374,8 @@ resource "aws_launch_configuration" "gitlab_lc" {
   }
 }
 
-# Autoscaling Group configuration
+# Autoscaling Group configuration. Autoscaling uses the LC previously created
+# and attach the instances with ELB
 resource "aws_autoscaling_group" "gitlab_autoscaling" {
   availability_zones = ["${data.aws_availability_zones.available.names[0]}", "${data.aws_availability_zones.available.names[1]}"]
   name = "gitlab-autoscaling-${aws_launch_configuration.gitlab_lc.id}"

@@ -1,31 +1,34 @@
-Role Name
+Gitlab Common
 ========
 
-A brief description of the role goes here.
+Creates an image fully configured with GitLab, using ensible and gitlab omnibus
 
 Requirements
 ------------
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+Ansible standard modules are used by this role
 
 Role Variables
 --------------
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+system_fqdn: Fully domain name of the system
+gitlab_user: Gitlab default user
+gitlab_datadir: Data/Repo directory
+gitlab_root_email: "root@example.com"
+postgres_gitlab_user: "git"
+postgres_gitlab_pass: Password of the DB
+postgres_gitlab_ext: "pg_trgm"
+postgres_gitlab_dbname: Name of the Database`
+postgres_host: DB host DNS name / IP
+postgres_user: "{{ postgres_gitlab_user }}"
+postgres_pass: "{{ postgres_gitlab_pass }}"
+unicorn_workers: "3"
+redis_host: redis endpoint
+redis_port: "6379"
+efs_dnsname: NFS server DNS name / IP
+gitlab_ssl_dir: Directory to store the SSL Certificate and Private Key
+gitlab_ssl_dn: Certificate Distinguished Name
 
-Dependencies
-------------
-
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
-
-Example Playbook
--------------------------
-
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
-
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
 
 License
 -------

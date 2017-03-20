@@ -19,3 +19,5 @@ unicorn_workers: "3"
 #redis_host: "localhost"
 redis_port: "6379"
 #efs_dnsname
+gitlab_ssl_dir: "/etc/gitlab/ssl"
+gitlab_ssl_dn: "/C=CA/ST=ON/O=Secret/CN={{ system_fqdn }}"

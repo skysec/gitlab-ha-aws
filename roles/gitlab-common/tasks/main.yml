@@ -8,6 +8,8 @@
     name: git-core
     state: present
 
+#Prepare options before installing postfix
+#preventing question during installation
 - name: Set postfix Internet Site options
   debconf:
     name: postfix
@@ -38,6 +40,8 @@
     - ca-certificates
     - nfs-common
 
+# Used by the next module, in order to create the
+# extension needed in the DB
 - name: Install python-psycopg2
   apt:
     name: python-psycopg2
@@ -51,6 +55,8 @@
     login_user: "{{ postgres_user }}"
     login_password: "{{ postgres_pass }}"  
 
+# Create directory needed by gitlab
+# to be mount point for NFS
 - name: Create NFS mount point
   file:
     path: "{{ gitlab_datadir }}"
@@ -58,6 +64,8 @@
     owner: ubuntu
     group: ubuntu
 
+# Create entry in /etc/fstab and mount NFS
+# Make sure is mounted before installing gitlab
 - name: Create NFS Option
   mount:
     name: "{{ gitlab_datadir }}"
@@ -66,12 +74,21 @@
     opts: "defaults,vers=4.1"
     state: mounted
 
-#- name: Create NFS option
-#  lineinfile:
-#    dest: /etc/fstab
-#    regexp: 'gitlab-data\s+nfs'
-#    line: "{{ efs_dnsname }}:/ /{{ gitlab_datadir }} nfs defaults,vers=4.1 0 0"
+# Create directories to store the SSL Certificate and
+# private key
+- name: Create directories need for SSL certs
+  file:
+    path: "{{ gitlab_ssl_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: 0700
 
+# Create self signed certificate
+- name: Create SSL self signed certificate
+  command: openssl req -x509 -newkey rsa:2048 -keyout "{{ gitlab_ssl_dir }}/{{ system_fqdn }}.key" -out "{{ gitlab_ssl_dir  }}/{{ system_fqdn }}.crt" -days 90 -nodes -subj "{{ gitlab_ssl_dn  }}"
+  args:
+    creates: "{{ gitlab_ssl_dir }}/{{ system_fqdn }}.key"
 
 - name: Copy install script 
   copy:
@@ -80,7 +97,7 @@
     owner: root
     group: root
     mode: 0750
-
+# Script provided by gitlab omnibus to isntall repo and gpg key
 - name: Install repository
   command: /usr/local/bin/script.deb.sh
   args:
@@ -91,6 +108,7 @@
     name: gitlab-ce
     state: present
 
+# Gitlab omnibus config file
 - name: Copy configuration file
   template:
     src: gitlab.rb.j2
