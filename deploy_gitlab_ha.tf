@@ -297,22 +297,6 @@ resource "aws_instance" "gitlab-seed" {
 
   provisioner "local-exec" {
     command = <<SCRIPT
-cat <<EOF > work/vars
-[public ip]
-${aws_instance.gitlab-seed.public_ip}
-[rds_endpoint]
-${aws_db_instance.gitlab-postgres.endpoint}
-[redis_endpoint]
-${aws_elasticache_cluster.gitlab-redis.cache_nodes.0.address}
-[efs_mountpoint]
-${aws_efs_file_system.gitlab_efs.id}.efs.${var.aws_region}.amazonaws.com
-[availability_zone]
-${aws_instance.gitlab-seed.availability_zone}
-EOF
-SCRIPT
-  }
-  provisioner "local-exec" {
-    command = <<SCRIPT
 INSTANCE_IP=${aws_instance.gitlab-seed.public_ip} \
 RDS_ENDPOINT=${aws_db_instance.gitlab-postgres.endpoint} \
 RDS_PASS=${var.postgres_gitlab_pass} \
