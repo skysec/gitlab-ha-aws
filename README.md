@@ -35,7 +35,9 @@ https://<ELB_dns_name>
 Give 3 to 5 minutes for the application to become available.
 
 In order to destroy the resources, run "./terminate.sh", and it'll terminate
-all resources.
+all resources. In some cases, terraform fails to delete the Internet Gateway 
+associated to the VPC, in this case, just re-run "./terminate.sh" to continue
+the deletion process.
 
 # Internals
 
