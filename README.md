@@ -20,19 +20,26 @@ In order to execute the scripts, the following is needed:
 
 Any Linux distro is an excellent choice to run the script.
 
-Also, AWS are needed with enough privileges to create the resources.
+Also, AWS credentials are needed with enough privileges to create the resources.
 
 # How it works
 
 Define the AWS credentials as environment vars: AWS_ACCESS_KEY_ID and
-AWS_SECRET_ACCESS_KEY, and execute ./init.sh
+AWS_SECRET_ACCESS_KEY, and execute ./init.sh.
+
+Once the infrastructure has been created, the script outputs the dns name of
+the Elastic Load Balancer (ELB). The gitlab-ha service should be available at:
+
+https://<ELB_dns_name>
+
+Give 3 to 5 minutes for the application to become available.
 
 In order to destroy the resources, run "./terminate.sh", and it'll terminate
 all resources.
 
 # Internals
 
-The scripts works as follows:
+The script works as follows:
 
 * Creates a ssh key pair.
 * Creates a self signed certificate.
@@ -52,3 +59,16 @@ private match an AZ.
 * A launch configuration is created using the seed instance.
 * An Autoscaling group is created based on the previously created launch
 configuration.
+
+# AWS Resources:
+
+* VPC
+* subnets
+* Security Groups
+* RDS (PostgreSQL)
+* Elasticache (redis)
+* EFS
+* EC2
+* ELB
+* Launch configuration
+* Autoscaling
